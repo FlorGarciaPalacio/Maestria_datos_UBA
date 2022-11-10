@@ -1,0 +1,600 @@
+---
+title: 'TPE1_GARCIAPALACIO '
+output:
+  html_document: default
+  latex_engine: pdflatex
+  pdf_document:
+    toc: no
+    toc_depth: 2
+    number_sections: no
+    keep_tex: yes
+always_allow_html: true
+---
+```{r eval=FALSE, include=FALSE}
+###########################################################
+#                   TALLER DE PROGRAMACIÓN                #
+#         Especialización en Métodos Cuantitativos        #
+#  para la Gestión y Análisis de Datos en Organizaciones  #
+#             FACULTAD DE CIENCIAS ECONÓMICAS             #
+#                UNIVERSIDAD DE BUENOS AIRES              #
+###########################################################
+## Asignatura: TALLER DE PROGRAMACIÓN
+## Año Lectivo: 2022
+## Docentes: Rodrigo Del Rosso/Patricia Girimonte
+## Estudiante: Garcia Palacio Florencia
+```
+ 
+
+![](F:/FLOR/CAPACITACIONES/Master UBA/taller de programación/Trabajo Final/posgradoUBA.jpg)
+<br>
+
+# ESPECIALIZACIÓN EN MÉTODOS CUANTITATIVOS PARA LA GESTIÓN Y ANÁLISIS DE DATOS  EN ORGANIZACIONES
+
+------------------------------------------------------------------------
+
+<br>
+<br>
+<br>
+<br>
+
+# E72V 07 TALLER DE PROGRAMACIÓN
+
+------------------------------------------------------------------------
+
+<br>
+<br>
+<br>
+
+# PRIMERA INSTANCIA DE EVALUACIÓN
+
+
+------------------------------------------------------------------------
+
+<br>
+<br>
+<br>
+<br>
+
+### DOCENTE: : Rodrigo Del Rosso-Patricia Girimonte
+
+### ESTUDIANTE: Florencia Gracía Palacio
+
+### 2022
+
+------------------------------------------------------------------------
+
+
+\pagebreak
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  echo = FALSE,
+  include = TRUE
+)
+
+options(knitr.kable.NA = '')
+
+```
+
+# Introducción
+
+<br>
+
+El presente trabajo es realizado para la materia "Taller de Programación" de la "Maestría en métodos cuantitativos para la gestión y análisis de datos en las organizaciones" de la UBA.
+
+El objetivo principal será se elaborar un análisis multivariado, aplicando los conocimientos obtenidos durante el cursado del taller. Se tomará como base el dataset de cursos de Udemy obtenido en la plataforma kaggle, que se puede encontrar en el siguiente [Link](https://www.kaggle.com/datasets/thedevastator/udemy-courses-revenue-generation-and-course-anal?resource=download), en el cual se presenta un problema de regresión donde el objetivo principal es determinar el precio que deberá tener un curso, en base a varias características. Es por esto que se realizará un EDA con foco principal en la variable precio y su relación con otras variables.
+
+<br>
+
+La base de datos se refiere a 4 categorías de cursos y cuenta con 10 columnas,de las cuales se evaluaran 5 variables (precio,duración,rating,level y subject) a continuación se detallan los datos que compone cada una:
+
+
+| Nombre de Columna   | Descripción                                            |
+|---------------------|--------------------------------------------------------|
+| course_title        | Título del curso. (String)                             |
+| url                 | URL del curso (String)                                 |
+| price               | Precio del curso (Float)                               |
+| num_subscribers     | Número de personas inscriptas en el curso. (Integer)   |
+| num_reviews         | Número de reviews que recibió el curso. (Integer)      |
+| num_lectures        | Cantidad de clases que tiene el curso (Integer)        |
+| level               | Nivel del curso. (String)                              |
+| content_duration    | Duración del curso. (Float)                            |
+| published_timestamp | Fecha y hora en la que el curso se publicó. (Datetime) |
+| subject             | Tema del curso (String)                                |
+
+<br>
+
+```{r Librerias, include=FALSE}
+
+#instalar librerias
+needed_packages <- c('tidyverse','ggplot2','PerformanceAnalytics','pastecs','knitr','kableExtra') 
+
+not_installed <- needed_packages[!needed_packages %in% installed.packages()[,'Package']]
+
+for (package in not_installed){
+  install.packages(package)
+}
+
+check <-  needed_packages[!needed_packages %in% installed.packages()[,'Package']]
+check
+
+#cargar librerias
+
+sapply(needed_packages, library, character.only = TRUE)    
+```
+
+
+```{r Importar datos, include=FALSE}
+
+#Limpiar el enviroment
+rm(list = ls())
+
+#Crear el path de donde voy a tomar los archivos csv con los datos
+
+path_data = paste0(getwd(),'/Data')
+
+files = list.files(path = path_data)
+
+#Elegir los datos que sean csv
+
+CSV_Files = files[endsWith(files,'.csv')==TRUE]
+
+#Importo los data sets
+
+lista_df = list()
+
+
+for (i in 1:length(CSV_Files)) {
+  
+  print(i)
+  df = read.csv(paste0(path_data,'/',CSV_Files[i])) 
+  lista_df[[i]] <- df
+  
+}
+
+#Le pongo el nombre a cada elemento para diferenciarlos
+
+names(lista_df) = c(str_sub(CSV_Files,str_locate(CSV_Files,'courses-')[,2]+1,str_locate(CSV_Files,'.csv')[,1]-1))
+
+
+#Armo el dataframe final con todos los datos
+
+df = rbind(lista_df$`business-courses`,lista_df$`design-courses`,make.row.names=FALSE)
+
+df = rbind(df,lista_df$`music-courses`,make.row.names=FALSE)
+
+df = rbind(df,lista_df$`web-development`,make.row.names=FALSE)
+
+#borro la lista porque ya arme el df
+
+rm(lista_df,i,files)
+
+```
+
+A modo de ejemplo se presentan las dos primeras filas de la base de datos seleccionada:
+
+```{r echo=FALSE}
+
+#Chequeo los primeros datos para ver si importamos ok el df
+df_ejemplo = df %>% head(2) 
+
+df_ejemplo%>% 
+  knitr::kable(
+    align = "l",
+    booktabs = TRUE,
+    longtable = FALSE,
+    linesep = "",
+    ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+
+
+```
+\pagebreak
+
+# Análisis
+
+## Limpieza de datos
+
+<br>
+Antes de comenzar con el análisis de los datos, es importante corroborar que los mismos esten en óptimas condiciones para ser analizados, esto con tal de asegurar que las conclusiones que obtengamos sean válidas. Con tal fin se constató la presencia de valores nulos y duplicados.
+
+### Valores nulos
+
+Se encontraron valores nulos en el dataset. También se observó que en algunas variables, si bien no había valores nulos, teníamos columnas categóricas con textos vacios o espacios, los cuales son equivalentes a valores nulos. Se decidió borrarlos, ya que todos los valores pertenecían a las mismas filas y probablemente son errores en la carga o el proceso de los archivos.
+A modo de resumen se presenta la cantidad de valores nulos en cada columna:
+
+<br>
+
+```{r echo=FALSE}
+null_values = data.frame(colSums(is.na(df)))
+names(null_values) = c('cantidad_NULL') #Ver cantidad de nulos
+
+null_values %>% filter(cantidad_NULL>0) %>% 
+  knitr::kable(
+    align = "l",
+    booktabs = TRUE,
+    longtable = FALSE,
+    linesep = "",
+    ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+
+#print(df[!complete.cases(df),]) #correr este código para ver los valores nulos
+```
+```{r echo=FALSE}
+
+#elimino los valores nulos
+df= df[complete.cases(df),]
+
+```
+
+<br>
+
+### Duplicados
+
+Se encontraron valores duplicados, se decidió borrarlos, ya que no representaban un porcentaje significativo de la base y no podíamos salvar los errores que pudieran derivarse de tenerlos en cuenta para el análisis de la variable rating.
+
+<br>
+A continuación se presenta el detalle de los IDs duplicados:
+
+<br>
+```{r echo=FALSE}
+duplicated_ids = df[duplicated(df$course_id),][,1] %>% unique()
+
+
+#chequeo si los duplicados tienen los mismos valores en todas las filas
+df %>% filter( is.na(course_id) == TRUE | course_id == duplicated_ids[2]| course_id == duplicated_ids[3]|
+                        course_id == duplicated_ids[4] |  course_id == duplicated_ids[5]  ) %>% arrange(course_id) %>% 
+
+  knitr::kable(
+    align = "l",
+    booktabs = TRUE,
+    longtable = TRUE,
+    linesep = "",
+    ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+
+#Elimino los duplicados ya que no puedo calcular el numero de rating que es un número agregado de la plataforma.
+
+df = df %>% filter( course_id != duplicated_ids[1]& course_id != duplicated_ids[2]&
+                        course_id != duplicated_ids[3] &  course_id != duplicated_ids[4])
+
+#check que no hay mas duplicados
+#df[duplicated(df$course_id),][,1:2]
+```
+
+
+```{r include=FALSE}
+variables_analisis = c('price','content_duration','Rating','subject','level')
+
+#genero un dataframe con los casos que no tienen nulos y las variables de interes para el análisis
+data = df %>% select(all_of(variables_analisis))
+
+data
+```
+
+<br>
+
+## Análisis Univariado: Distribución de las variables
+
+A continuación se estudiará la distribución de las variables bajo análisis, para entender el comportamiento que presenta cada una individualmente y sus principales medidas resumen.
+
+Resumen de las principales medidas descriptivas:
+
+<br>
+
+```{r echo=FALSE}
+summ_data = summary(data, maxsum=20)
+
+#colnames(summ_data)
+
+data.frame(precio=c(summ_data[1:6]),duración = c(summ_data[7:12]),Rating=c(summ_data[13:18]),
+           Tema=c(summ_data[19:24]),Nivel=c(summ_data[25:30])) %>% 
+    knitr::kable(
+    align = "l",
+    booktabs = TRUE,
+    longtable = TRUE,
+    linesep = "",
+    ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+```
+<br>
+
+La distribución de las variables no es normal. Nuestra variable principal precio esta concentrada principalmente en valores bajos, pero podemos observar que hay un grupo de cursos que se encuentra en torno a los 200usd.
+
+La mayoria de los cursos son de finanzas y web development y de Todos los niveles.
+
+En los siguientes gráficos de densidad y frecuencia podremos observar el comportamiento de cada variable:
+
+<br>
+```{r graficos densidad, echo=FALSE}
+# Armar los gráficos de densidad de cada variable.
+
+
+media = round(mean(data$price))
+mediana = round(median(data$price))
+st_dev = round(sd(data$price))
+
+medidas_resumen = paste('Medidas de resumen variable price: Media:',media,
+                        ', Mediana:',mediana,', Desv. Estandar:', st_dev )
+
+plot_price <- data %>%
+    ggplot( aes(x=price)) +
+    geom_histogram(aes(y=after_stat(density)), alpha=0.3)+
+    geom_density(fill="#69b3a2", color="#e9ecef", alpha=0.8) +
+    geom_vline(aes(xintercept = media, colour = 'media'),linetype = "dashed",linewidth = 1,show.legend = TRUE) +
+    geom_vline(aes(xintercept = mediana, colour = "mediana"),linetype = "dashed",linewidth = 1,show.legend = TRUE) +
+    scale_color_manual(values = c("media" = "red", "mediana" = "orange")) +
+    theme_classic()+
+    labs(caption = medidas_resumen)+
+    theme(legend.position = "top")+
+    xlab('Precio del curso')+
+    ggtitle('Distribución de la variable Precio')
+
+media_d = round(mean(data$content_duration))
+mediana_d = round(median(data$content_duration))
+st_dev_d = round(sd(data$content_duration))
+
+medidas_resumen_d = paste('Medidas de resumen variable content_duration: Media:',media_d,
+                        ', Mediana:',mediana_d,', Desv. Estandar:', st_dev_d )
+
+plot_duration <- data %>%
+    ggplot( aes(x=content_duration)) +
+    geom_histogram(aes(y=after_stat(density)), alpha=0.3)+
+    geom_density(fill="#69b3a2", color="#e9ecef", alpha=0.8) +
+    geom_vline(aes(xintercept = media_d,colour = "media"),linetype = "dashed",linewidth = 1,show.legend = TRUE) +
+    geom_vline(aes(xintercept = mediana_d,colour = "mediana"),linetype = "dashed",linewidth = 1,show.legend = TRUE) +
+    scale_color_manual(values = c("media" = "red", "mediana" = "orange")) +
+    theme_classic()+
+    labs(caption = medidas_resumen_d)+
+    theme(legend.position = "top")+
+    xlab('Duracion del curso')+
+    ggtitle('Distribucion de la variable Duracion')
+
+media_r = round(mean(data$Rating))
+mediana_r = round(median(data$Rating))
+st_dev_r = round(sd(data$Rating))
+
+medidas_resumen_r = paste('Medidas de resumen variable content_duration: Media:',media_r,
+                        ', Mediana:',mediana_r,', Desv. Estandar:', st_dev_r )
+
+plot_rating <- data %>%
+    ggplot( aes(x=Rating)) +
+    geom_histogram(aes(y=after_stat(density)), alpha=0.3)+
+    geom_density(fill="#69b3a2", color="#e9ecef", alpha=0.8) +
+    geom_vline(aes(xintercept = media_r,colour = "media"),linetype = "dashed",linewidth = 1,show.legend = TRUE) +
+    geom_vline(aes(xintercept = mediana_r,colour = "mediana"),linetype = "dashed",linewidth = 1,show.legend = TRUE) +
+    scale_color_manual(values = c("media" = "red", "mediana" = "orange")) +
+    theme_classic()+
+    labs(caption = medidas_resumen_r)+
+    theme(legend.position = "top")+
+    xlab( 'Puntuación del curso')+
+    ggtitle('Distribución de la variable Rating')
+
+plot_subject <- data %>%
+    ggplot( aes(x=subject, fill = subject)) + 
+    geom_bar( ) +
+    scale_fill_brewer(palette = "Set1") +
+    theme_classic()+
+    xlab('Tema del curso')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5 ))+
+    ggtitle('Frecuencia de las categorias de la variable Subject')
+
+plot_level <- data %>%
+    ggplot( aes(x=level, fill = level)) + 
+    geom_bar( ) +
+    scale_fill_brewer(palette = "Set1") +
+    theme_classic()+
+    xlab('Tema del curso')+
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5 ))+
+    ggtitle('Frecuencia de las categorias de la variable Level')
+
+#Imprimo los gráficos de densidad
+    
+print(plot_price)
+print(plot_duration)
+print(plot_rating)
+print(plot_subject)
+print(plot_level)
+```
+
+<br>
+
+## Análisis multivariado
+
+A continuación se evaluará la relación entre las variables, para determinar si existen relaciones significativas entre cada una de ellas y el precio
+
+<br>
+
+```{r include=FALSE}
+#Creación de gráficos con la relación entre precio y las demás variables y guardado de gráficos en PNG
+
+cor_1 = paste('El coeficiente de correlación entre las variables es:',round(cor(data$price,data$content_duration),2))
+
+p_rel <- data %>% 
+      ggplot( aes(x=price, y=content_duration, color=level)) +
+      geom_point() +
+      ggtitle('Relación precio y duración',subtitle = cor_1)+
+      theme(legend.position="right")
+
+#Guardar gráfico
+png(filename = "PRECIO-DURACION.png", width = 800, height = 600)
+p_rel
+dev.off()
+
+#chart.Correlation(data %>% select(all_of(c('price','content_duration'))))
+
+cor_2 = paste('El coeficiente de correlación entre las variables es:',round(cor(data$price,data$Rating),2))
+
+p2_rel <- data %>% 
+      ggplot( aes(x=price, y=Rating, color=level)) +
+      geom_point() +
+      ggtitle('Relación precio y rating',subtitle = cor_2)+
+      theme(legend.position="right")
+
+png(filename = "PRECIO-RATING.png", width = 800, height = 600)
+p2_rel
+dev.off()
+
+
+t3_rel <- data %>% group_by(level) %>% summarise(media_precio = round(mean(price),2),mediana_precio =  round(median(price),2) )
+ 
+ p3_rel <- data %>%
+    ggplot( aes(x=price,group=level,color=level)) +
+    geom_density( palette = "Set1",line=2, alpha=0.5) +
+    theme_classic()+
+    theme(legend.position = "right")+
+    xlab( 'Precio del curso')+
+    ggtitle('Distribución de la variable Precio según nivel del curso')
+ 
+png(filename = "PRECIO-NIVEL.png", width = 800, height = 600)
+p3_rel
+dev.off()
+
+ 
+t4_rel <-  data %>% group_by(subject) %>% summarise(media_precio = round(mean(price),2),mediana_precio =  round(median(price),2) )
+ 
+write.csv2(t4_rel,file='Tabla_media_mediana-tema')
+
+ p4_rel <- data %>%
+    ggplot( aes(x=price,group=subject,color=subject)) +
+    geom_density( palette = "Set1", line= 2 , alpha=0.5) +
+    theme_classic()+
+    theme(legend.position = "top")+
+    xlab( 'Precio del curso')+
+    ggtitle('Distribución de la variable precio según tema del curso')
+ 
+png(filename = "PRECIO-TEMA.png", width = 800, height = 600)
+p4_rel
+dev.off()
+
+
+t5_rel <-  data %>% group_by(subject,level) %>% summarise(media_precio = round(mean(price),2),mediana_precio =  round(median(price),2) )
+
+write.csv2(t5_rel,file='Tabla_media_mediana-nivel')
+
+p5_rel <- t5_rel %>% ggplot( aes(fill=subject, y=media_precio, x=level)) + 
+    geom_bar(position="dodge", stat="identity")+
+    scale_fill_brewer(palette = "Set1")+
+    ggtitle('Variable precio según tema y nivel del curso')
+```
+
+<br>
+
+## Variables numéricas
+
+No se encontro evidencia de relación lineal significativa entre las variables numéricas analizadas y la variable precio. Como se puede evidenciar en los siguientes gráficos:
+
+<br>
+```{r echo=FALSE}
+p_rel
+p2_rel
+```
+
+```{r include=FALSE}
+
+#Por otro lado, tampoco se encontró relación significativa entre el rating de los cursos y su duración:
+cor_3 = paste('El coeficiente de correlación entre las variables es:',round(cor(data$Rating,data$content_duration),2))            
+
+p_rel_num <- data %>% 
+      ggplot( aes(x=Rating, y=content_duration, color=level)) +
+      geom_point() +
+      ggtitle('Relación precio y duración',subtitle = cor_3)+
+      theme(legend.position="right")
+
+
+p_rel_num
+```
+
+<br>
+
+## Variables Categóricas
+
+Al observar la variable precio en relación con el nivel del curso y con el tema principal del mismo, se puede evidenciar que existen diferencias de precio según estas categorias.
+
+<br>
+
+Al comparar los precios de los distintos niveles, podemos ver que sus distribuciones son similares con medianas en torno a los 45usd en la mayoría de los casos. Si bien la mayoría de los cursos se concentran en precios bajos, podemos apreciar que:
+
+ - All Levels y begginers levels son los más similares en comportamiento.
+ - Expert Level tiene menor media y mediana, con menos densidad en cursos de los precios más altos.
+ 
+ <br>
+
+```{r echo=FALSE}
+t3_rel %>% knitr::kable(
+    align = "l",
+    booktabs = TRUE,
+    longtable = TRUE,
+    linesep = "",
+    ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+p3_rel
+```
+<br>
+
+Al ver la variable precio en relación al tema del curso vemos diferencias significativas entre las medias y medianas. Además, sus distribuciones son diferentes.
+
+ - Musical Instruments tiene una mayor concentración en precios bajos con dos modas marcas alrededor de 30 y 50.
+ - Web development presenta una curva más chata que el resto de las categorias, siendo el que menos densidad presenta en valores bajos. Lo que explica que tenga medidas de tendencia central más elevadas.
+
+<br>
+
+```{r echo=FALSE}
+t4_rel %>% knitr::kable(
+    align = "l",
+    booktabs = TRUE,
+    longtable = TRUE,
+    linesep = "",
+    ) %>%
+  kableExtra::kable_styling(
+      position = "left",
+      latex_options = c("striped", "repeat_header"),
+      stripe_color = "gray!15"
+    )
+p4_rel
+```
+
+<br>
+
+Cuando analizamos ambas variables podemos observar que para todos los niveles Web Development es el tema que tiene mayores precios medios. En todos los casos el nivel Experto es el más económico, sin embargo podemos observar que para musical instrument los precios son más similares entre niveles.
+
+<br>
+
+```{r echo=FALSE}
+#t5_rel
+p5_rel
+```
+
+<br>
+
+# Conclusiones
+
+En base al análisis realizado podemos concluir que el precio de los cursos de Udemy dependera en principal medida del tema principal del que trate, siendo Web Development la categoría donde se encuentran los precios más altos.
+En menor medida el precio también se ve influenciado por el nivel al que pertenezca el curso, salvo para los cursos de Musical Instruments donde el precio de todos los niveles es similar.
+Por otro lado, podemos decir que el precio no esta linealmente relacionado con los ratings que las personas dan a los cursos, ni con su duración.
+
+<br>
+<br>
+

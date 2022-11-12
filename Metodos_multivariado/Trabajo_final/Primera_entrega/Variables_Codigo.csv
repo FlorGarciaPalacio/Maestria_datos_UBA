@@ -1,0 +1,36 @@
+Indicadores;Codigo
+Poblacion total;SP.POP.TOTL
+PBI per capita;NY.GNP.PCAP.PP.CD
+PBI por persona empleada;SL.GDP.PCAP.EM.KD
+Tasa de empleo / poblacion;SL.EMP.TOTL.SP.ZS
+Tasa de subempleo o empleo vulnerable;SL.EMP.VULN.ZS
+Tasa de desempleo;SL.UEM.TOTL.ZS
+Gasto publico en educacion (en USD);NY.ADJ.AEDU.CD
+Gasto publico en educacion (en % del PBI);SE.XPD.TOTL.GD.ZS
+Gasto publico en educacion (en % del GPT);SE.XPD.TOTL.GB.ZS
+Gasto publico por estudiante, primaria;SE.XPD.PRIM.PC.ZS
+Gasto publico por estudiante, secundaria;SE.XPD.SECO.PC.ZS
+Gasto publico por estudiante, terciaria;SE.XPD.TERT.PC.ZS
+Tasa de inscripcion en primaria;SE.PRM.ENRR
+Tasa de inscripcion en secundaria;SE.SEC.ENRR
+Tasa de finalizacion de primaria;SE.PRM.CMPT.ZS
+Tasa de finalizacion de secundaria;SE.SEC.CMPT.LO.ZS
+Tasa de desercion escolar primaria;SE.PRM.UNER.ZS
+Tasa de desercion escolar secundaria;SE.SEC.UNER.LO.ZS
+Tasa de pobreza (segun estandares nacionales);SI.POV.NAHC
+Indice de Gini;SI.POV.GINI
+Tasa de alfabetismo infantil;SE.ADT.1524.LT.ZS
+Tasa de alfabetismo adulto;SE.ADT.LITR.ZS
+Expectativa de vida al nacer (YEARS);SP.DYN.LE00.IN
+Mortalidad infantil Neonatal;SH.DYN.NMRT
+Mortalidad infantil;SP.DYN.IMRT.IN
+Gasto publico en salud per capita (en USD);SH.XPD.CHEX.PC.CD
+Gasto publico en salud (en % del PBI);SH.XPD.CHEX.GD.ZS
+Medicos por cada 1000 personas;SH.MED.PHYS.ZS
+Enfermeros y auxiliares cada 1000 personas;SH.MED.NUMW.P3
+Desnutricion (% poblacion);SN.ITK.DEFC.ZS
+Tasa de desempleo con capacitacion alta;SL.UEM.ADVN.ZS
+Tasa de desempleo con capacitacion baja;SL.UEM.BASC.ZS
+Incidencia de tuberculosis (c/100,000 personas);SH.TBS.INCD
+Prevalecencia de diabetes (% poblacion);SH.STA.DIAB.ZS
+Prevalecencia de VIH (% poblacion);SH.DYN.AIDS.ZS

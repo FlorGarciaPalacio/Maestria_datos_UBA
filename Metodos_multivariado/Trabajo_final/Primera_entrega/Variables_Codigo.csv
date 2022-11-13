@@ -1,0 +1,36 @@
+Indicadores,Codigo,nombre_corto
+Poblacion total,SP.POP.TOTL,Poblacion
+PBI per capita,NY.GNP.PCAP.PP.CD,PBI_per_capita
+PBI por persona empleada,SL.GDP.PCAP.EM.KD,PBI_empleada
+Tasa de empleo / poblacion,SL.EMP.TOTL.SP.ZS,Tasa_empleo
+Tasa de subempleo o empleo vulnerable,SL.EMP.VULN.ZS,Tasa_subempleo
+Tasa de desempleo,SL.UEM.TOTL.ZS,Tasa_desempleo
+Gasto publico en educacion (en USD),NY.ADJ.AEDU.CD,Gasto_educacion
+Gasto publico en educacion (en % del PBI),SE.XPD.TOTL.GD.ZS,Gasto_edu_PBI
+Gasto publico en educacion (en % del GPT),SE.XPD.TOTL.GB.ZS,Gasto_edu_GPT
+"Gasto publico por estudiante, primaria",SE.XPD.PRIM.PC.ZS,GPE_por_primaria
+"Gasto publico por estudiante, secundaria",SE.XPD.SECO.PC.ZS,GPE_por_secundaria
+"Gasto publico por estudiante, terciaria",SE.XPD.TERT.PC.ZS,GPE_por_terciaria
+Tasa de inscripcion en primaria,SE.PRM.ENRR,Inscrpcion_primaria
+Tasa de inscripcion en secundaria,SE.SEC.ENRR,Inscrpcion_secundaria
+Tasa de finalizacion de primaria,SE.PRM.CMPT.ZS,finalizacion_primaria
+Tasa de finalizacion de secundaria,SE.SEC.CMPT.LO.ZS,finalizacion_secundaria
+Tasa de desercion escolar primaria,SE.PRM.UNER.ZS,desercion_primaria
+Tasa de desercion escolar secundaria,SE.SEC.UNER.LO.ZS,desercion_secundaria
+Tasa de pobreza (segun estandares nacionales),SI.POV.NAHC,pobreza
+Indice de Gini,SI.POV.GINI,gini
+Tasa de alfabetismo infantil,SE.ADT.1524.LT.ZS,alfabetismo_infantil
+Tasa de alfabetismo adulto,SE.ADT.LITR.ZS,alfabetismo_adulta
+Expectativa de vida al nacer (YEARS),SP.DYN.LE00.IN,expectativa_vida
+Mortalidad infantil Neonatal,SH.DYN.NMRT,mort_infantil_neonatal
+Mortalidad infantil,SP.DYN.IMRT.IN,mort_infantil
+Gasto publico en salud per capita (en USD),SH.XPD.CHEX.PC.CD,gasto_salud
+Gasto publico en salud (en % del PBI),SH.XPD.CHEX.GD.ZS,gasto_salud_PBI
+Medicos por cada 1000 personas,SH.MED.PHYS.ZS,tasa_medicos
+Enfermeros y auxiliares cada 1000 personas,SH.MED.NUMW.P3,tasa_auxiliares_medicina
+Desnutricion (% poblacion),SN.ITK.DEFC.ZS,desnutricion
+Tasa de desempleo con capacitacion alta,SL.UEM.ADVN.ZS,desempleo_alta_capacitacion
+Tasa de desempleo con capacitacion baja,SL.UEM.BASC.ZS,desempleo_baja_capacitacion
+"Incidencia de tuberculosis (c/100,000 personas)",SH.TBS.INCD,tasa_tuberculosis
+Prevalecencia de diabetes (% poblacion),SH.STA.DIAB.ZS,tasa_diabetes
+Prevalecencia de VIH (% poblacion),SH.DYN.AIDS.ZS,tasa_VHI

@@ -1,5 +1,5 @@
 ---
-title: "Script - Entrega 1 - Conglomerados"
+title: "Script - Entrega 1 - PCA - Reducción de dimensionalidad"
 output:
   html_notebook: default
   html_document: default

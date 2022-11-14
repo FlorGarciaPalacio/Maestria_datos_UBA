@@ -1,0 +1,688 @@
+---
+title: "Script - Entrega 1 - PCA"
+output:
+  html_notebook: default
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  echo = TRUE,
+  include = TRUE
+)
+
+```
+
+\pagebreak
+
+# 3. Desarrollo metodológico
+
+## 3.a. Extracción y controles de integridad de datos
+
+```{r Carga e importación de librerias, include=FALSE}
+for_install <- c('WDI','jsonlite','tidyverse','corrplot','FactoMineR','skimr','pastecs','psych',
+                 'factoextra','paran','NbClust','knitr','dendextend','maps','viridis','xlsx',
+                 'missMDA','ggrepel') 
+
+not_installed <- for_install[!for_install %in% installed.packages()[,'Package']]
+
+for (package in not_installed){
+  install.packages(package)
+}
+
+check <-  for_install[!for_install %in% installed.packages()[,'Package']]
+check
+
+
+#Importacion librerías
+sapply(for_install, library, character.only = TRUE)    
+```
+
+
+```{r Formato, include=FALSE}
+
+#Formato
+options(width = 125)
+windowsFonts("Cambria" = "Cambria") # Definicion de fuentes.
+graphics.off() # Limpieza de variables y graficos.
+
+```
+
+
+### 3.a.1. Extracción de datos desde APIs
+
+```{r Lista de indicadores}
+
+rm(list = ls())
+# Lectura de archivo csv con variables y codigos respectivos para su extraccion de la API de World Bank.
+
+VarCodigos = read.table(
+  file = 'Variables_Codigo.csv',
+  header = TRUE,
+  sep = ',',
+  encoding = 'UTF-8'
+)
+
+Indicadores = VarCodigos[, 2] # Se obtienen los codigos de los indicadores para la extraccion.
+
+nombres= c()
+for (i in VarCodigos$Indicadores){
+  nombres = c(nombres,str_replace_all(i, " ","_"))
+} 
+ VarCodigos$nombres = nombres
+ 
+rm(i,nombres)
+
+```
+
+```{r Impresion de numero de indicadores}
+cat('Numero de indicadores iniciales: ', length(Indicadores)) # Control del numero de indicadores.
+
+```
+
+```{r Extraccion de datos, include=FALSE, results='hide'}
+
+# Loop para realizar el request a la API utilizando los parametros según la documentación y parseo del json resultante. Se realiza un slicing de la lista obtenida del parseo del json y se obtiene las 4 columnas relevantes.
+
+list_df = list()
+
+for (i in 1:length(Indicadores)) {
+  apiurl = paste0(
+    'http://api.worldbank.org/v2/country/all/indicator/',
+    Indicadores[i],
+    '?date=2010:2022&per_page=30000&source=2&format=json'
+  ) # Acceso a la API
+  print(paste0('Retrieving: ', apiurl)) # Mensaje de inicio de extraccion.
+  temp = fromJSON(apiurl)[[2]][, 1:5] # Extracción de columnas relevantes.
+  temp$date = as.numeric(temp$date) # Conversion de años a formato numerico.
+  temp = temp %>% filter(! is.na(temp$value)) # Filtro de valores NA.
+  temp = temp %>% filter(temp[,3] != '') # Utilizacion de filtro # Filtro de codigos de grupos de paises en blanco.
+  temp = data.frame('Indicator' = temp$indicator[,1],
+                    'Country' = temp$countryiso3code,
+                    'Date' = temp$date,
+                    'Value' = temp$value) # Conversion a data frame de 4 columnas.
+  colnames(temp)[4] = Indicadores[i]
+
+  #Lista con los data frames de cada variable
+  
+  list_df[[i]] = temp
+}
+
+#Loop para join de los df de cada variable
+
+for (df in 1:length(Indicadores)){
+  if (df == 1){
+    DF= list_df[[df]][,2:4]
+  } else {
+    DF = merge(DF,list_df[[df]][,2:4],by=c('Country'='Country','Date'='Date'),all=T)
+  }
+}
+
+rm(temp, apiurl, i, df,list_df)
+```
+
+
+
+```{r Metadatos de paises}
+
+#Consulta a la API para la obtención de los metadatos de los países de la base del WDI
+
+code_countries = tolower(unique(DF$Country)) 
+
+Paises = fromJSON(paste0('http://api.worldbank.org/v2/sources/2/country/','all','/series/SP.POP.TOTL/metadata?format=json'))
+
+concept = Paises$source$concept
+
+concept = concept[[1]]$variable[[1]]
+
+code_countries = concept$id
+
+for (i in 1:length(code_countries)){
+
+  temp_conc = concept[i,2][[1]]
+  rownames(temp_conc)=temp_conc[,1]
+
+  # Conversion a data frame.
+  temp = data.frame('3-alphacode' = code_countries[i],
+                     '2-alphacode' = temp_conc['2-alphacode',2],
+                      'IncomeGroup' = temp_conc['IncomeGroup',2],
+                      'LongName' = temp_conc['LongName',2],
+                      'Region' = temp_conc['Region',2],
+                      'ShortName'= temp_conc['ShortName',2]) 
+
+  #Uno los Data frames
+  
+  if (i==1){
+  countries_df = temp} else{
+    countries_df = rbind(countries_df,temp)}
+}
+  
+rm(Paises,concept,temp,temp_conc,i,code_countries)
+```
+
+```{r Limpieza de datos - eliminar datos de regiones}
+#Se eliminan los paises que no tienen region en los metadatos del banco (son agrupaciones de países)
+
+DF = DF %>% left_join(countries_df,by = c('Country'='X3.alphacode'))
+
+DF = DF %>% filter(!is.na(Region))
+```
+
+```{r Visualizacion de datos resultantes}
+
+#Se cambia el nombre de las columnas de códigos a nombre de las variables
+
+# Reemplazo nombres de columnas 
+col_names=c()
+
+for (i in colnames(DF)){
+  if (i %in% VarCodigos$Codigo){
+    
+    nombre = VarCodigos %>% filter(Codigo==i) %>% dplyr::select(all_of('nombre_corto'))
+    nombre[1,]
+    col_names= c(col_names,nombre[1,])
+    
+  } else { col_names= c(col_names,i) }
+}
+
+colnames(DF) = col_names
+
+rm(i,col_names)
+
+# Visualizacion de datos.
+DF %>% head()
+```
+
+
+### 3.a.2. Pruebas de integridad de datos
+
+```{r Estructura del dataset}
+
+# Estructura del dataset.
+str(DF)
+```
+
+```{r Verificación de datos ausentes por fecha}
+
+#Determinar en qué fecha hay menos valores nulos para tomar los datos mas completos y poder comparar los países
+
+df_nas = data.frame('2010-na'= c(2010,DF %>% filter(Date==2010) %>% is.na() %>% sum()),
+           '2011-na'= c(2011,DF %>% filter(Date==2011) %>% is.na() %>% sum()),
+           '2012-na'= c(2012,DF %>% filter(Date==2012) %>% is.na() %>% sum()),
+           '2013-na'= c(2013,DF %>% filter(Date==2013) %>% is.na() %>% sum()),
+           '2014-na'= c(2014,DF %>% filter(Date==2014) %>% is.na() %>% sum()),
+           '2015-na'= c(2015,DF %>% filter(Date==2015) %>% is.na() %>% sum()),
+           '2016-na'= c(2016,DF %>% filter(Date==2016) %>% is.na() %>% sum()),
+           '2017-na'= c(2017,DF %>% filter(Date==2017) %>% is.na() %>% sum()),
+           '2018-na'= c(2018,DF %>% filter(Date==2018) %>% is.na() %>% sum()),
+           '2019-na'= c(2019,DF %>% filter(Date==2019) %>% is.na() %>% sum()),
+           '2020-na'= c(2020,DF %>% filter(Date==2020) %>% is.na() %>% sum()),
+           '2021-na'= c(2021,DF %>% filter(Date==2021) %>% is.na() %>% sum()))
+
+df_nas = df_nas %>% t() %>% data.frame()
+colnames(df_nas) = c('years','valores_nulos')
+
+#Ordenar de mayor a menor
+df_nas = df_nas %>% arrange(valores) 
+df_nas
+```
+
+```{r Verificación de datos faltantes de la fecha elegida}
+
+# Verificación de datos faltantes
+
+data = DF %>% filter(Date==df_nas$years[1])
+rownames(data) = data$Country
+
+comp_na_columnas = data.frame('nas_2011'=colSums(is.na(data)))# Datos faltantes por variable.
+
+comp_na_paises = data.frame('nas_2011'=rowSums(is.na(data))) 
+
+print(comp_na_columnas %>% filter(nas_2011<50)) #columnas con menos de 50 nulos
+
+comp_na_paises # Tabla de frecuencias de faltantes por pais.
+```
+
+
+```{r Verificación de datos ausentes por país}
+#Ver cantidad de países que presentan valores nulos (Hay países que no tienen algunas estadísticas)
+
+print(paste('Cantidad de paises con 15 nulos o más: ',rowSums(is.na(data))[rowSums(is.na(data))>15] %>% length())) #paises con mas de 15 variables sin datos nulos
+
+print(paste('Total Países: ',nrow(data)))
+
+print(paste('Países con nulos',nrow(data[!complete.cases(data),])))
+
+print(paste('Porcentaje países con nulos',nrow(data[!complete.cases(data),])/nrow(data)*100))
+
+rm(comp_na_columnas,comp_na_paises,df_nas)
+```
+
+### 3.a.3. Ajustes al dataset - Consideraciones
+
+```{r}
+#vector con las variables bajo análisis
+
+variables = colnames(data)[!colnames(data) %in% c('Country','Date','X2.alphacode','IncomeGroup','LongName','Region','ShortName')]
+
+
+#Se eliminan paises con mas del 25% de las variables con valores nulos
+
+nulos_paises = data.frame('nulos'=rowSums(is.na(data)))
+
+row_keep = rownames(nulos_paises %>% filter(nulos<(length(variables)/4)))
+
+data = data[row_keep,]
+
+#Se eliminan las variables que tienen más de 10 valores ausentes
+
+nulos_variables = data.frame('nulos'=colSums(is.na(data)))
+col_keep = rownames(nulos_variables %>% filter(nulos<10))
+
+data = data[,col_keep]
+
+#check de nulos por pais
+
+
+print(data.frame('Nulos por país'=rowSums(is.na(data))))
+           
+print(data.frame('Nulos por variables'=rowSums(is.na(data))))
+
+rm(nulos_paises,nulos_variables,col_keep,row_keep,Indicadores)
+```
+
+
+```{r backup}
+
+# Se realiza un backup temporal del dataset original.
+
+DF_Backup = data # Backup del dataset.
+
+#generamos vectores con la información de las columnas que representan variables para el análisis y otra que son variables descriptivas de cada país
+
+not_variables = c('Country','Date','X2.alphacode','IncomeGroup','LongName','ShortName','Region')
+
+variables = colnames(data)[!colnames(data) %in% not_variables]
+```
+
+```{r Ajustes al dataset: valores ausentes}
+# Tratamiento de valores ausentes con librería missMDA (https://cran.r-project.org/web/packages/missMDA/missMDA.pdf)
+
+transform_data = imputePCA(data[variables],ncp = 5)
+
+data_analisis = as.data.frame(transform_data$completeObs) 
+
+colSums(is.na(data_analisis)) # Verificación de que no queden datos faltantes.
+```
+
+```{r}
+#Se armó el data_frame final con los datos sin ausentes
+
+data = cbind(data_analisis,data[not_variables])
+```
+
+## 3.b Variables e individuos
+
+```{r Data Frame final}
+data
+```
+
+```{r Estructura data frame final}
+str(data)
+```
+
+
+```{r Backup de datasets, eval=FALSE, include=FALSE}
+save(data, DF_Backup, countries_df, VarCodigos, variables,not_variables,DF, file = 'TPF_Backup.RData') # Guardado de datasets en RData.
+
+xlsx::write.xlsx(x = DF_Backup, file = '/DF_Original.xlsx', sheetName = 'Dataset', showNA = TRUE)
+xlsx::write.xlsx(x = data, file = '/DF_Análisis.xlsx', sheetName = 'Dataset', showNA = TRUE)
+
+rm(list=ls()) # Eliminación de variables.
+```
+
+```{r Carga de datasets, eval=FALSE, include=FALSE}
+load('TPF_Backup.RData') # Carga de datasets en RData.
+```
+
+## 3.c Evaluación de los supuestos teóricos
+
+```{r}
+#Evaluar si se cumple con las condiciones para aplicar PCA antes de comenzar con el análisis
+
+R = stats::cor(data[variables], method = 'pearson') 
+
+# Test de esfericidad de Bartlett.
+cat('Bartlett Test P-Value:', round(psych::cortest.bartlett(R = R, n = dim(data[variables])[1])$p.value, 4))
+```
+
+
+
+# 4. Presentación de resultados y conclusiones
+
+## 4.1. Analisis exploratorio de datos
+
+### 4.1.1. EDA utilizando la librería "pastecs"
+
+```{r Analisis exploratorio con pastecs}
+
+options(scipen = 999, digits = 2) # Quita la notacion cientifica para la exposicion de valores numericos.
+Temp = round(t(pastecs::stat.desc(
+  data[variables],
+  basic = FALSE,
+  desc = TRUE,
+  norm = TRUE
+)), 2)
+Temp[Temp > 100000] = formatC(Temp[Temp > 100000], format = 'e', digits = 2) # Convierte números grandes a notación científica.
+kable(Temp[,c(1:2,5:8,10,13)])
+rm(Temp)
+```
+
+### 4.1.2. Representación gráfica de las densidades
+
+```{r Representacion grafica de distribuciones de densidad, fig.dim=c(100,30), dpi=300}
+
+data[c(variables,'Country')] %>% pivot_longer(-Country) %>% 
+  ggplot(aes(x=value, color=name)) + 
+  geom_histogram(color='aquamarine4', bins = 10) + 
+  facet_wrap(~name, scales = 'free', ncol = 4) + theme_minimal(base_size = 9, base_family = 'Cambria') +
+  labs(x = 'Valor', y = 'Densidad', title='Distribuciones de densidad') +
+  theme(title = element_text(size = 14, colour = 'aquamarine4', face = 'bold'),
+        plot.title = element_text(size = 18, hjust = 0.5))
+
+```
+
+### 4.1.3. Análisis de covarianzas y correlaciones
+
+```{r Matriz de varianzas y covarianzas}
+S = stats::cov(data[variables], method = 'pearson')
+cat('Matriz de varianzas y covarianzas:\n\n')
+S[1:4,1:4]
+```
+
+```{r Matriz de correlaciones}
+R = stats::cor(data[variables], method = 'pearson') #
+cat('Matriz de correlaciones:\n\n')
+R[1:3,1:3]
+```
+
+
+```{r Grafico de correlaciones, fig.dim=c(100,70), dpi=600}
+# Calculo de los p-valores de las correlaciones:
+pvalues = corrplot::cor.mtest(data[variables], conf.level = 0.95)
+
+# Grafico de correlacion utilizando la libreria 'corrplot'
+par(family = 'Cambria') # Fuente del grafico.
+corrplot::corrplot(R, tl.srt = 45,
+         method = 'circle', 
+         type = 'lower', 
+         bg = 'white', 
+         title = NULL,
+         diag = T, 
+         tl.cex = 0.8, pch.cex = 1,
+         tl.col = 'aquamarine4',
+         order = 'hclust',
+         p.mat = pvalues$p, insig = "blank", pch = 4,
+         mar=c(0,0,5,0))
+par(c("cex.main" = 1, "col.main" = 'black'))
+title('Grafico de correlacion de variables', line = 0, adj = 0.45)
+rm(pvalues)
+```
+
+## 4.2. Aplicación del método de componentes principales
+
+### 4.2.1. Matriz de varianzas-covarianza y correlación
+
+```{r Backup 2, eval=FALSE, include=FALSE}
+save(data, DF_Backup, countries_df, R, S, VarCodigos, variables, not_variables, file = 'TPF_Backup2.RData') # Guardado de datasets en RData.
+rm(list=ls()) # Eliminacion de variables.
+```
+
+```{r Carga del backup 2, eval=FALSE, include=FALSE}
+load('TPF_Backup2.RData') # Carga de datasets en RData.
+```
+
+```{r Estandarización de datos}
+# Estandarizacion de variables.
+
+#Opción 1 estandarizar todas las variables:
+DF_Scaled = scale(data[variables], center = T, scale = T) 
+
+#Opción 2 estandarizar solo las de unidades de población, las que esten en usd y tuberculosis, cuyas unidades son muy diferentes al resto, manteniendo así las varianzas de las demás variables para realizar un análisis con la matriz de varianza y covarianza. 
+
+scaled_2 = data[variables]
+
+scale_pob= scale(data$Poblacion, center = T, scale = T)
+scaled_2$Poblacion = scale_pob[,1]
+
+scale_edu= scale(data$Gasto_educacion, center = T, scale = T)
+scaled_2$Gasto_educacion = scale_edu[,1]
+
+scale_salud= scale(data$gasto_salud, center = T, scale = T)
+scaled_2$gasto_salud = scale_salud[,1]
+
+scale_pbi_1= scale(data$PBI_per_capita, center = T, scale = T)
+scaled_2$PBI_per_capita = scale_pbi_1[,1]
+
+scale_pbi_2= scale(data$PBI_empleada, center = T, scale = T)
+scaled_2$PBI_empleada = scale_pbi_2[,1]
+
+scale_tuberculosis= scale(data$tasa_tuberculosis, center = T, scale = T)
+scaled_2$tasa_tuberculosis = scale_tuberculosis[,1]
+
+DF_scaled_2 = as.matrix(scaled_2)
+
+#Visualización de los data set:
+
+DF_Scaled[1:5,1:4] # Visualizacion del dataset estandarizado.
+DF_scaled_2[1:5,1:4] # Visualizacion del dataset estandarizado.
+
+R_Scaled = cor(DF_Scaled) # Obtencion de la matriz de correlacion.
+temp = sum(round(R_Scaled,4) != round(R,4)) 
+
+R_Scaled_2 = cor(DF_scaled_2) # Obtencion de la matriz de correlacion.
+temp_2 = sum(round(R_Scaled_2,4) != round(R,4)) 
+
+temp
+temp_2
+
+# Chequeo de igualdad de matrices de correlacion.
+rm(R_Scaled,R_Scaled_2, temp,temp_2,scale_pob,scaled_2,scale_edu,
+   scale_salud,scale_pbi_1,scale_pbi_2,scale_tuberculosis)
+```
+
+
+
+### 4.2.2. Creación del modelo utilizando PCA (FactoMineR)
+
+```{r Creación del modelo utilizando FactoMineR - matriz correlaciones, results='hide'}
+DF_PCA = PCA(X = DF_Scaled, scale.unit = T, ncp = 10, graph = F) # Creación del modelo.
+summary(DF_PCA) # Resumen del modelo.
+```
+
+```{r Creación del modelo utilizando FactoMineR - matriz varianzas, results='hide'}
+DF_PCA_2 = PCA(X = DF_scaled_2, scale.unit = F, ncp = 10, graph = F) # Creación del modelo.
+summary(DF_PCA_2) # Resumen del modelo.
+```
+
+
+### 4.2.3. Determinación del número de componentes.
+
+#### 4.2.3.1. Criterio del autovalor superior a la unidad
+
+```{r Autovalores - correlaciones}
+DF_PCA$eig[1:10,] # Autovalores (varianzas recogidas por cada una de los componentes principales)
+```
+
+```{r Autovalores - varianzas}
+DF_PCA_2$eig[1:10,] # Autovalores (varianzas recogidas por cada una de los componentes principales)
+```
+#### 4.2.3.2. Screeplot para determinar el numero de componentes
+
+```{r Screeplot, fig.dim=c(6,3), dpi=300}
+factoextra::fviz_eig(
+  DF_PCA,
+  choice = 'eigenvalue',
+  geom = 'line',
+  linecolor = 'aquamarine4',
+  main = 'Grafico de sedimentacion-correlaciones',
+  xlab = 'Dimensiones',
+  ylab = 'Porcentaje de variabilidad explicada'
+) +
+  theme_minimal(base_family = 'Cambria', base_size = 9) +
+  theme(title = element_text(size = 8, family = 'Cambria'), plot.title = element_text(size = 9, hjust = 0.5))
+
+factoextra::fviz_eig(
+  DF_PCA_2,
+  geom = 'line',
+  linecolor = 'aquamarine4',
+  main = 'Grafico de sedimentacion-varianzas',
+  xlab = 'Dimensiones',
+  ylab = 'Porcentaje de variabilidad explicada'
+) +
+  theme_minimal(base_family = 'Cambria', base_size = 9) +
+  theme(title = element_text(size = 8, family = 'Cambria'), plot.title = element_text(size = 9, hjust = 0.5))
+```
+
+#### 4.2.3.3. Analisis paralelo para determinar el numero de componentes
+
+```{r Analisis paralelo, fig.dim=c(8,4), dpi=300}
+
+# Opción 1 (correlación)
+par(
+  pin = c(5, 2),
+  mar = c(1, 1, 1, -1) + 4,
+  family = 'Cambria',
+  font = 3,
+  cex = 0.8
+)
+paran::paran(
+  x = DF_Scaled,
+  iterations = 5000,
+  graph = TRUE,
+  color = TRUE,
+  status = FALSE,
+  quietly = FALSE,
+  col = c("aquamarine4", "lightgreen", "salmon"),
+  lty = c(1, 2, 3),
+  lwd = 1,
+  legend = TRUE
+)
+
+# Opción 2 (matriz de varianzas)
+par(
+  pin = c(5, 2),
+  mar = c(1, 1, 1, -1) + 4,
+  family = 'Cambria',
+  font = 3,
+  cex = 0.8
+)
+paran::paran(
+  x = DF_scaled_2,
+  iterations = 5000,
+  graph = TRUE,
+  color = TRUE,
+  status = FALSE,
+  quietly = FALSE,
+  col = c("aquamarine4", "lightgreen", "salmon"),
+  lty = c(1, 2, 3),
+  lwd = 1,
+  legend = TRUE
+)
+```
+
+#### 4.2.4 Interpretación de los componentes principales obtenidos según matriz de correlación
+
+```{r Cargas factoriales - correlacion}
+
+DF_PCA = PCA(X = DF_Scaled, scale.unit = T, ncp = 6, graph = F) # Creación del modelo con las variables finales elegidas según su autovalor y varianza acumulada.
+CargasFactoriales = as.data.frame(DF_PCA$var$cor) # Matriz de cargas factoriales o correlacion entre las variables originales y las dimensiones.
+```
+
+```{r}
+#Tablas resumen cargas factoriales con valor absoluto mayor a 0.7
+
+for (i in colnames(CargasFactoriales)){
+  print(CargasFactoriales[i] %>% filter( CargasFactoriales[i] > 0.5 | CargasFactoriales[i] < -0.5) %>% arrange(i))
+}
+```
+
+
+```{r Representacion grafica de las cargas factoriales -  correlacion, fig.dim=c(8,4), dpi=300}
+for (i in 1:dim(CargasFactoriales)[2]) {
+  print(
+    CargasFactoriales %>%
+      ggplot(
+        mapping = aes(x = variables, 
+                      y = CargasFactoriales[, i], 
+                      fill = CargasFactoriales[, i])
+      ) +
+      geom_col(show.legend = F) +
+      coord_flip() +
+      ylim(-1, 1) +
+      scale_fill_gradient(
+        low = "brown4",
+        high = "chartreuse4",
+        space = "Lab",
+        na.value = "grey50",
+        guide = "colourbar",
+        aesthetics = "fill"
+      ) +
+      xlab('Variables') +
+      ylab('Carga factorial') +
+      ggtitle(paste0('Carga factorial Dimension ', i)) +
+      # scale_color_gradient(low = 'darkred', high = 'darkblue') +
+      theme(
+        axis.text.x = element_text(angle = 90),
+        legend.title = element_blank(),
+        title = element_text(family = 'Cambria')
+      )
+  )
+}
+rm(i, CargasFactoriales)
+```
+
+
+
+```{r Backup 3, eval=FALSE, include=FALSE}
+save(data, DF_Backup, DF_PCA, DF_Scaled, countries_df, R, S, VarCodigos, variables,not_variables, file = 'TPF_Backup3.RData') # Guardado de datasets en RData.
+rm(list=ls()) # Eliminacion de variables.
+```
+
+```{r Carga del backup 3, eval=FALSE, include=FALSE}
+load('TPF_Backup3.RData') # Carga de datasets en RData.
+```
+
+### 4.2.5 Gráficos componentes principales obtenidos con matriz de correlación
+
+```{r}
+
+DF_PCA$eig
+
+datos.grafico2 <- data.frame(DF_PCA$var$coord[,1:2])
+ggplot(datos.grafico2)+
+  geom_point(aes(x = Dim.1, y = Dim.2,colour="darkred")) +
+  geom_text_repel(aes(x = Dim.1, y = Dim.2),label = rownames(datos.grafico2)) +
+  geom_vline(xintercept = 0,colour = "darkgray") +
+  geom_hline(yintercept = 0,colour = "darkgray") +
+  labs (x="Dimension 1 (43.78%)", y = "Dimension 2 (9.69%)") +
+  theme(legend.position="none")
+
+
+datos.grafico <- data.frame(DF_PCA$ind$coord[,1:2],data$ShortName)
+
+colnames(datos.grafico) <- c("Dim.1","Dim.2","Country")
+ggplot(datos.grafico) +
+  geom_point(aes(x=Dim.1,y=Dim.2,colour ="darkred"))+
+  geom_text_repel(aes(x = Dim.1, y = Dim.2),label = data$ShortName) +
+  geom_vline(xintercept = 0,colour = "darkgray") +
+  geom_hline(yintercept = 0,colour = "darkgray") +
+  labs (x="Dimension 1 (43.78%)", y = "Dimension 2 (9.69%)") +
+  theme(legend.position="none")
+```
+
+

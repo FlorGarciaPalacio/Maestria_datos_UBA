@@ -1,0 +1,645 @@
+---
+title: "Script - Entrega 2 - Cluster"
+output:
+  html_notebook: default
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  echo = TRUE,
+  include = TRUE
+)
+
+```
+
+\pagebreak
+
+# 3. Desarrollo metodológico
+
+## 3.a. EDA previó al análisis
+
+```{r Carga e importación de librerias, include=FALSE}
+for_install <- c('WDI','jsonlite','tidyverse','corrplot','FactoMineR','skimr','pastecs','psych',
+                 'factoextra','paran','NbClust','knitr','dendextend','maps','viridis','xlsx',
+                 'missMDA','ggrepel','outliers','mvoutlier','EnvStats') 
+
+not_installed <- for_install[!for_install %in% installed.packages()[,'Package']]
+
+for (package in not_installed){
+  install.packages(package)
+}
+
+check <-  for_install[!for_install %in% installed.packages()[,'Package']]
+check
+
+
+#Importacion librerías
+sapply(for_install, library, character.only = TRUE)    
+```
+
+
+
+```{r Formato, include=FALSE}
+
+#Formato
+options(width = 125)
+windowsFonts("Cambria" = "Cambria") # Definicion de fuentes.
+graphics.off() # Limpieza de variables y graficos.
+
+```
+
+
+```{r Carga del backup 3, eval=FALSE, include=FALSE}
+rm(list=ls())
+
+load('TPF_Backup3.RData') # Carga de datasets en RData.
+df_PCA_coord=as.data.frame(PCA_Coordenadas)
+```
+
+```{r Matriz de correlaciones}
+R = stats::cor(PCA_Coordenadas, method = 'pearson') #
+cat('Matriz de correlaciones:\n\n')
+R[1:3,1:3]
+
+```
+
+```{r}
+pairs(df_PCA_coord)
+```
+
+```{r}
+#Determinar la existencia de valores atípicos multivariados
+mean<-colMeans(df_PCA_coord)
+
+Sx<-cov(df_PCA_coord)
+
+D2<-mahalanobis(df_PCA_coord, mean, Sx, inverted=FALSE,tol=1e-23)
+
+print(D2)
+
+print(pchisq(D2, df=dim(df_PCA_coord)[1], lower.tail=FALSE)) # Muestra la significatividad
+
+print(qchisq(.90, df=dim(df_PCA_coord)[1]))# Calcula el valor crítico
+
+qqPlot(D2,distribution = 'chisq',param.list=list(df=dim(df_PCA_coord)[1]-1, ncp=0))
+
+chisq.out.test(D2, variance=var(D2), opposite = FALSE)
+
+chisq.out.test(D2, variance=var(D2), opposite = TRUE)
+
+```
+
+## 4.3. Aplicación del método de conglomerados o clusters
+
+### 4.3.1. Tareas iniciales
+
+
+```{r Distancia euclidea}
+# Obtención de las matrices de distancia euclídea y euclídea al cuadrado.
+Dist = stats::dist(x = PCA_Coordenadas, method = 'euclidean', diag = TRUE) # Matriz de distancias euclideas.
+Dist2 = Dist^2 # Matriz de distancias euclideas al cuadrado.
+rm(Dist) # Se elimina la matriz de distancias euclideas dado que se trabajará con la matriz al cuadrado.
+```
+
+```{r Distancia euclidea sin outliers}
+# Obtención de las matrices de distancia euclídea y euclídea al cuadrado sin outliers
+no_outliers = !rownames(PCA_Coordenadas) %in% c('SWZ','IND')
+PCA_Coor_no_out = PCA_Coordenadas[no_outliers,]
+
+Dist_v2 = stats::dist(x = PCA_Coor_no_out, method = 'euclidean', diag = TRUE) # Matriz de distancias euclideas.
+Dist2_v2 = Dist_v2^2 # Matriz de distancias euclideas al cuadrado.
+rm(Dist_v2) # Se elimina la matriz de distancias euclideas dado que se trabajará con la matriz al cuadrado.
+```
+
+### 4.3.2. Seleccion del numero de clusters.
+
+```{r Determinacion del numero de clusters, results='hide', fig.show='hide'}
+# Determinacion del numero de clusters, para cada uno de los metodos.
+Metodos = c('centroid', 'single', 'complete','average', 'ward.D2', 'kmeans')
+Tabla.NClust = data.frame() # Creación de un data frame vacio.
+for (Metodo in Metodos){
+  nclust = NbClust(data = PCA_Coordenadas, method = Metodo) # Aplicacion de cada metodo.
+  temp = as.data.frame(table(nclust$Best.nc['Number_clusters',])) # Se obtiene una tabla de frecuencias con la cantidad de recomendaciones de cada número de clusters, para cada método.
+  if (Metodo == 'centroid'){
+    Tabla.NClust = temp # Asignacion a variable temporal.
+  }
+  else {
+    Tabla.NClust = merge.data.frame(x = Tabla.NClust, y = temp, by = 'Var1', all = T) # Consolidación de tablas.
+  }
+}
+rm(Metodo, Metodos, nclust, temp) # Limpieza de variables temporales.
+```
+```{r Obtención de la tabla resumen del numero de conglomerados, results='hide'}
+# Obtención de la tabla resumen del numero de conglomerados.
+colnames(Tabla.NClust) = c('K', 'centroid', 'single', 'complete','average', 'ward.D2', 'kmeans') # Se renombran las columnas.
+Tabla.NClust$Order = as.character(Tabla.NClust$K) # Conversion de numeros a caracteres.
+Tabla.NClust$Order = as.numeric(Tabla.NClust$Order) # Conversion a valores numericos.
+Tabla.NClust = Tabla.NClust[order(Tabla.NClust$Order),] # Se ordenan las filas en base al numero de clusters.
+Tabla.NClust = Tabla.NClust[,-length(Tabla.NClust)] # Se elimina la columna creada.
+rownames(Tabla.NClust) = Tabla.NClust[,1] # Se asignan nombres a las filas.
+Tabla.NClust = Tabla.NClust[,-1] # Se elimina la columna "K".
+kable(Tabla.NClust) # Se presennta la tabla de frecuencias.
+```
+
+```{r Determinacion del numero de clusters sin outliers, results='hide', fig.show='hide'}
+# Determinacion del numero de clusters, para cada uno de los metodos.
+Metodos = c('centroid', 'single', 'complete','average', 'ward.D2', 'kmeans')
+Tabla.NClust_2 = data.frame() # Creación de un data frame vacio.
+for (Metodo in Metodos){
+  nclust = NbClust(data = PCA_Coor_no_out, method = Metodo) # Aplicacion de cada metodo.
+  temp = as.data.frame(table(nclust$Best.nc['Number_clusters',])) # Se obtiene una tabla de frecuencias con la cantidad de recomendaciones de cada número de clusters, para cada método.
+  if (Metodo == 'centroid'){
+    Tabla.NClust_2 = temp # Asignacion a variable temporal.
+  }
+  else {
+    Tabla.NClust_2 = merge.data.frame(x = Tabla.NClust_2, y = temp, by = 'Var1', all = T) # Consolidación de tablas.
+  }
+}
+rm(Metodo, Metodos, nclust, temp) # Limpieza de variables temporales.
+```
+
+```{r Obtención de la tabla resumen del numero de conglomerados sin outliers, results='hide'}
+# Obtención de la tabla resumen del numero de conglomerados.
+colnames(Tabla.NClust_2) = c('K', 'centroid', 'single', 'complete','average', 'ward.D2', 'kmeans') # Se renombran las columnas.
+Tabla.NClust_2$Order = as.character(Tabla.NClust_2$K) # Conversion de numeros a caracteres.
+Tabla.NClust_2$Order = as.numeric(Tabla.NClust_2$Order) # Conversion a valores numericos.
+Tabla.NClust_2 = Tabla.NClust_2[order(Tabla.NClust_2$Order),] # Se ordenan las filas en base al numero de clusters.
+Tabla.NClust_2 = Tabla.NClust_2[,-length(Tabla.NClust_2)] # Se elimina la columna creada.
+rownames(Tabla.NClust_2) = Tabla.NClust_2[,1] # Se asignan nombres a las filas.
+Tabla.NClust_2 = Tabla.NClust_2[,-1] # Se elimina la columna "K".
+kable(Tabla.NClust_2) # Se presennta la tabla de frecuencias.
+```
+
+### 4.3.3. Métodos jerárquicos
+
+#### Método del centroide
+
+```{r }
+# Numero de clusters
+K = 12
+Colors = c('chartreuse', 'chocolate', 'cadetblue', 'coral', 'cyan', 'darkgoldenrod', 'brown','red','blue','yellow','green','pink')
+```
+
+```{r Metodo del centroide, fig.dim=c(8,4), dpi=300}
+# Aplicación del método del centroide
+Met.Clusters = stats::hclust(d = Dist2, method = 'centroid')
+
+# Obtención de los integrantes de cada grupo definido.
+# Se crea un data frame que incluye una columna con la asignacion de cada pais a cada grupo.
+Data.Grupos = as.data.frame(cbind(PCA_Coordenadas, 'Grupo' = cutree(Met.Clusters, k = K)))
+
+# Impresión de los integrantes de cada grupo.
+for (i in 1:K){
+  Texto = paste0(rownames(Data.Grupos)[Data.Grupos$Grupo == i], sep = ';')
+  cat('Grupo', i, ':', Texto, '\n\n')
+  }
+
+# Impresion de los centroides correspondientes.
+cat('Metodo del centroide - Centroides por variable y grupo')
+Centroides = Data.Grupos %>% group_by(Grupo) %>% summarise_all('mean')
+Centroides
+
+# Se parametriza el dendograma a graficar.
+par(family = 'Cambria', mar = c(4,4,2,0)) # Fuente del gráfico.
+plot(Met.Clusters, 
+     cex = 0.7, # Tamaño de la fuente.
+     # main = 'Metodo del centroide', # Titulo.
+     axes = TRUE, # Activa los ejes.
+     ann = FALSE, # Desactiva los rotulos.
+     # xlab = 'Paises', # Eje x.
+     # ylab = 'Distancia', # Eje y.
+     sub = '' # Subtitulo.
+     )
+title(main = "Método del centroide") # Agrega un titulo al grafico.
+mtext("Distancia", side=2, line=2) # Agrega el rotulo del eje x.
+mtext("Paises", side=1, line=1)  # Agrega el rotulo del eje y.
+rect.hclust(Met.Clusters, k = K, border = Colors) # Secciona el dendograma en clusters.
+
+# Eliminación de variables temporales.
+rm(Centroides, Data.Grupos, Met.Clusters, Texto, i)
+```
+
+#### Método del vecino más cercano
+
+```{r}
+# Numero de clusters
+K = 10
+Colors = c('chartreuse', 'chocolate', 'cadetblue', 'coral', 'cyan', 'darkgoldenrod', 'brown','red','blue','yellow')#,'green','pink')
+```
+
+```{r Metodo del vecino mas cercano, fig.dim=c(8,4), dpi=300}
+# Aplicación del método del vecino mas cercano
+Met.Clusters = stats::hclust(d = Dist2, method = 'single')
+
+# Obtención de los integrantes de cada grupo definido.
+# Se crea un data frame que incluye una columna con la asignacion de cada pais a cada grupo.
+Data.Grupos = as.data.frame(cbind(PCA_Coordenadas, 'Grupo' = cutree(Met.Clusters, k = K)))
+
+# Impresión de los integrantes de cada grupo.
+for (i in 1:K){
+  Texto = paste0(rownames(Data.Grupos)[Data.Grupos$Grupo == i], sep = ';')
+  cat('Grupo', i, ':', Texto, '\n\n')
+  }
+
+# Impresion de los centroides correspondientes.
+cat('Metodo del vecino mas cercano - Centroides por variable y grupo')
+Centroides = Data.Grupos %>% group_by(Grupo) %>% summarise_all('mean')
+Centroides
+
+# Se parametriza el dendograma a graficar.
+par(family = 'Cambria', mar = c(4,4,2,0)) # Fuente del gráfico.
+plot(Met.Clusters, 
+     cex = 0.7, # Tamaño de la fuente.
+     # main = 'Metodo del centroide', # Titulo.
+     axes = TRUE, # Activa los ejes.
+     ann = FALSE, # Desactiva los rotulos.
+     # xlab = 'Paises', # Eje x.
+     # ylab = 'Distancia', # Eje y.
+     sub = '' # Subtitulo.
+     )
+title(main = "Método del vecino mas cercano") # Agrega un titulo al grafico.
+mtext("Distancia", side=2, line=2) # Agrega el rotulo del eje x.
+mtext("Paises", side=1, line=1)  # Agrega el rotulo del eje y.
+rect.hclust(Met.Clusters, k = K, border = Colors) # Secciona el dendograma en clusters.
+
+# Eliminación de variables temporales.
+rm(Centroides, Data.Grupos, Met.Clusters, Texto, i)
+```
+
+#### Método del vecino más lejano
+
+```{r }
+# Numero de clusters
+K = 5
+Colors = c('chartreuse', 'chocolate', 'cadetblue', 'coral', 'cyan')#, 'darkgoldenrod', 'brown','red','blue','yellow')#,'green','pink')
+```
+
+```{r Metodo del vecino mas lejano, fig.dim=c(8,4), dpi=300}
+# Aplicación del método del vecino mas lejano
+Met.Clusters = stats::hclust(d = Dist2, method = 'complete')
+
+# Obtención de los integrantes de cada grupo definido.
+# Se crea un data frame que incluye una columna con la asignacion de cada pais a cada grupo.
+Data.Grupos = as.data.frame(cbind(PCA_Coordenadas, 'Grupo' = cutree(Met.Clusters, k = K)))
+
+# Impresión de los integrantes de cada grupo.
+for (i in 1:K){
+  Texto = paste0(rownames(Data.Grupos)[Data.Grupos$Grupo == i], sep = ';')
+  cat('Grupo', i, ':', Texto, '\n\n')
+  }
+
+# Impresion de los centroides correspondientes.
+cat('Metodo del vecino mas lejano - Centroides por variable y grupo')
+Centroides = Data.Grupos %>% group_by(Grupo) %>% summarise_all('mean')
+Centroides
+
+# Se parametriza el dendograma a graficar.
+par(family = 'Cambria', mar = c(4,4,2,0)) # Fuente del gráfico.
+plot(Met.Clusters, 
+     cex = 0.7, # Tamaño de la fuente.
+     # main = 'Metodo del centroide', # Titulo.
+     axes = TRUE, # Activa los ejes.
+     ann = FALSE, # Desactiva los rotulos.
+     # xlab = 'Paises', # Eje x.
+     # ylab = 'Distancia', # Eje y.
+     sub = '' # Subtitulo.
+     )
+title(main = "Método del vecino más lejano") # Agrega un titulo al grafico.
+mtext("Distancia", side=2, line=2) # Agrega el rotulo del eje x.
+mtext("Paises", side=1, line=1)  # Agrega el rotulo del eje y.
+rect.hclust(Met.Clusters, k = K, border = Colors) # Secciona el dendograma en clusters.
+
+# Eliminación de variables temporales.
+rm(Centroides, Data.Grupos, Met.Clusters, Texto, i)
+```
+
+#### Método de la distancia promedio
+
+```{r }
+# Numero de clusters
+K = 7
+Colors = c('chartreuse', 'chocolate', 'cadetblue', 'coral', 'cyan', 'darkgoldenrod', 'brown')#,'red','blue','yellow')#,'green','pink')
+```
+
+```{r Metodo de la distancia promedio, fig.dim=c(8,4), dpi=300}
+# Aplicación del método de la distancia promedio.
+Met.Clusters = stats::hclust(d = Dist2, method = 'average')
+
+# Obtención de los integrantes de cada grupo definido.
+# Se crea un data frame que incluye una columna con la asignacion de cada pais a cada grupo.
+Data.Grupos = as.data.frame(cbind(PCA_Coordenadas, 'Grupo' = cutree(Met.Clusters, k = K)))
+
+# Impresión de los integrantes de cada grupo.
+for (i in 1:K){
+  Texto = paste0(rownames(Data.Grupos)[Data.Grupos$Grupo == i], sep = ';')
+  cat('Grupo', i, ':', Texto, '\n\n')
+  }
+
+# Impresion de los centroides correspondientes.
+cat('Metodo de la distancia promedio - Centroides por variable y grupo')
+Centroides = Data.Grupos %>% group_by(Grupo) %>% summarise_all('mean')
+Centroides
+
+# Se parametriza el dendograma a graficar.
+par(family = 'Cambria', mar = c(4,4,2,0)) # Fuente del gráfico.
+plot(Met.Clusters, 
+     cex = 0.7, # Tamaño de la fuente.
+     # main = 'Metodo del centroide', # Titulo.
+     axes = TRUE, # Activa los ejes.
+     ann = FALSE, # Desactiva los rotulos.
+     # xlab = 'Paises', # Eje x.
+     # ylab = 'Distancia', # Eje y.
+     sub = '' # Subtitulo.
+     )
+title(main = "Método de la distancia promedio") # Agrega un titulo al grafico.
+mtext("Distancia", side=2, line=2) # Agrega el rotulo del eje x.
+mtext("Paises", side=1, line=1)  # Agrega el rotulo del eje y.
+rect.hclust(Met.Clusters, k = K, border = Colors) # Secciona el dendograma en clusters.
+
+# Eliminación de variables temporales.
+rm(Centroides, Data.Grupos, Met.Clusters, Texto, i)
+```
+
+#### Método de Ward
+
+```{r }
+# Numero de clusters
+K = 7
+Colors = c('chartreuse', 'chocolate', 'cadetblue', 'coral', 'cyan', 'darkgoldenrod', 'brown')#,'red','blue','yellow','green','pink')
+```
+
+```{r Metodo de Ward, fig.dim=c(8,4), dpi=300}
+# Aplicación del método de Ward.
+Met.Clusters = stats::hclust(d = Dist2, method = 'ward.D2')
+
+# Obtención de los integrantes de cada grupo definido.
+# Se crea un data frame que incluye una columna con la asignacion de cada pais a cada grupo.
+Data.Grupos = as.data.frame(cbind(PCA_Coordenadas, 'Grupo' = cutree(Met.Clusters, k = K)))
+
+# Impresión de los integrantes de cada grupo.
+for (i in 1:K){
+  Texto = paste0(rownames(Data.Grupos)[Data.Grupos$Grupo == i], sep = ';')
+  cat('Grupo', i, ':', Texto, '\n\n')
+  }
+
+# Impresion de los centroides correspondientes.
+cat('Metodo de Ward - Centroides por variable y grupo')
+Centroides_ward = Data.Grupos %>% group_by(Grupo) %>% summarise_all('mean')
+Centroides_ward
+
+# Se parametriza el dendograma a graficar.
+par(family = 'Cambria', mar = c(4,4,2,0)) # Fuente del gráfico.
+plot(Met.Clusters, 
+     cex = 0.7, # Tamaño de la fuente.
+     # main = 'Metodo del centroide', # Titulo.
+     axes = TRUE, # Activa los ejes.
+     ann = FALSE, # Desactiva los rotulos.
+     # xlab = 'Paises', # Eje x.
+     # ylab = 'Distancia', # Eje y.
+     sub = '' # Subtitulo.
+     )
+title(main = "Método de Ward") # Agrega un titulo al grafico.
+mtext("Distancia", side=2, line=2) # Agrega el rotulo del eje x.
+mtext("Paises", side=1, line=1)  # Agrega el rotulo del eje y.
+rect.hclust(Met.Clusters, k = K, border = Colors) # Secciona el dendograma en clusters.
+
+df_ward = df_PCA_coord
+df_ward$grupos = cutree(Met.Clusters,K)
+# Eliminación de variables temporales.
+rm(Data.Grupos, Texto, i)
+```
+
+
+
+```{r Centroides para cada componente en cada grupo ward, fig.dim=c(10,5), results='hide', fig.show='hide'}
+# Grafico de centroides para cada componente
+Centroides_ward$metodo = 'Ward' 
+Centroides_ward$Grupo = as.character(Centroides_ward$Grupo)
+
+Centroides_ward %>% pivot_longer(cols=c('riqueza_saludable','gasto_salud','Edu_Primaria','tuber_emple','poblacion','importancia_gasto_edu'),names_to='Variable',values_to='Valor') %>% 
+  ggplot(aes(x = Grupo, y = Valor,fill=Grupo,hue=Grupo)) +
+  geom_col() +
+  facet_wrap(vars(Variable), ncol = 3,nrow = 2,scales="free") +
+  labs(subtitle = 'Grupos', x = "Variables", y = "Centroide", title = 'Centroides para cada componente en cada grupo') +
+  theme_bw(base_family = 'Cambria') +
+  theme(axis.text.x = element_text(angle = 90), 
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r Grafico de clusters - Metodo de ward, fig.dim=c(4,3), message=FALSE, warning=FALSE, dpi=300}
+# Grafico de clusters
+library(factoextra) # Importacion de librerias.
+# Conversion de nombres de filas a nombres completos de paises.
+
+comb_variables = list() #lista vacia para guardar las combinaciones posibles
+cant_var= length(colnames(PCA_Coordenadas)) #cantidad de variables a combinar
+var_name = colnames(PCA_Coordenadas)
+
+for (var_1 in 1:cant_var-1){
+  for (var_2 in 1:cant_var){
+    if (var_1 <= var_2){ 'do-nothing'
+      } else {
+         comb_variables[[length(comb_variables)+1]]= c(var_name[var_1],var_name[var_2])
+      }
+    }
+}
+
+rm(cant_var,var_name,var_1,var_2)
+# Gráfico con la representación de los grupos en los distintos componentes principales.
+
+
+for (i in 1:length(comb_variables)){ 
+  p=df_ward %>% 
+  ggplot(mapping = aes(x=df_ward[,comb_variables[[i]][1]], 
+                       y=df_ward[,comb_variables[[i]][2]],
+                       color=as.character(grupos),
+                       label=rownames(df_ward))) + 
+    geom_point() +
+  stat_ellipse(type = "t") +
+    theme_bw(base_family = 'Cambria', base_size = 7)+
+    ggtitle('Metodo de Wards - Grafico de clusters') +
+    xlab(comb_variables[[i]][1])+
+    ylab(comb_variables[[i]][2])
+
+    print(p)
+  }
+```
+```{r Medias para cada variable original grupo ward}
+data_ward = data
+data_ward$Grupo = as.character(cutree(Met.Clusters,K))
+
+
+sum_ward = data_ward[,c(variables,c('Grupo'))] %>% group_by(Grupo) %>% summarise_all('mean')
+
+sum_ward
+for (i in variables){
+p = sum_ward[,c(i,'Grupo')] %>% pivot_longer(cols=all_of(i),names_to='Variable',values_to='Valor') %>% 
+ggplot(aes(x = Grupo, y = Valor,fill=Grupo,hue=Grupo)) +
+  geom_col() +
+  labs(subtitle = i, x = i, y = "Valores medios", title = 'Media para cada grupo') +
+  theme_bw(base_family = 'Cambria') +
+  theme(axis.text.x = element_text(angle = 90), 
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+
+print(p)}
+```
+
+
+```{r Grafico de mapa mundial, fig.dim=c(10,6), results='hide', fig.show='hide'}
+
+# Mapa geográfico para la representaciòn de clusters
+# Se obtienen datos de las latitudes y longitudes promedio de cada pais y se crea una tabla consolidada con el código de cada pais, el nombre, la latitud y longitud.
+LatLong = read.csv('world_country_and_usa_states_latitude_and_longitude_values.csv')
+LatLong = LatLong[,1:4]
+Consolidado = df_ward
+Consolidado$Pais = rownames(Consolidado)
+Consolidado = merge(x = Consolidado, y = countries_df, by.x = 'Pais', by.y = 'X3.alphacode')
+Consolidado = merge(x = Consolidado, y = LatLong, by.x = 'X2.alphacode', by.y = 'country_code', all.x = T)
+Consolidado$Grupo = as.character(Consolidado$grupos)
+
+# Se utiliza la libreria "maps" para obtener las coordenadas geográficas para representar el mapa mundial en dos ejes cartesianos.
+# Luego, se representa el mapa y cada uno de los paises, con el color representativo del grupo correspondiente.
+WorldMap = map_data("world")
+ggplot() +
+  geom_polygon(WorldMap, mapping = aes(x = long, y = lat, group = group), colour = "white", fill = 'lightgrey') +
+  geom_point(data = Consolidado, mapping = aes(x = longitude, y = latitude, color = Grupo), size = 5, alpha = 0.5) +
+  labs(x = "Longitud", y = "Latitud", title = 'Representación geográfica del clustering obtenido') +
+  theme_bw(base_family = 'Cambria') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+
+
+### 4.3.4. Metodo no jerárquico de K Medias (K-Means)
+
+```{r }
+# Numero de clusters
+K = 5
+Colors = c('chartreuse', 'chocolate', 'cadetblue')#, 'coral', 'cyan', 'darkgoldenrod')#, 'brown','red','blue','yellow','green','pink')
+```
+
+```{r Metodo de k means, results='hide'}
+set.seed(50)
+# Aplicación del método de k-means.
+PCA.KMeans = kmeans(x = PCA_Coordenadas, centers = K) # Creación del objeto k means.
+Data.Grupos = as.data.frame(cbind(PCA_Coordenadas, 'Grupo' = PCA.KMeans$cluster)) # Se agregan las asignaciones a cada grupo.
+
+# Impresión de los integrantes de cada grupo.
+Listado = c()
+for (i in 1:K){
+  Integrantes = c('Grupo ',i,': ', paste0(rownames(Data.Grupos)[Data.Grupos$Grupo == i], sep = '; '), '\n\n')
+  Listado = append(x = Listado, values = Integrantes)
+  }
+cat(Listado, sep = '')
+rm(Integrantes, Listado)
+```
+
+```{r Centroides para cada componente en cada grupo, fig.dim=c(10,5), results='hide', fig.show='hide'}
+# Impresion de los centroides correspondientes.
+Centroides = as.data.frame(PCA.KMeans$centers)
+kable(x = Centroides, caption = 'Metodo de K-Medias - Centroides por variable y grupo', digits = 4, format = 'simple')
+
+# Grafico de centroides para cada componente
+Centroides$metodo = 'K-means' 
+Centroides$grupos = rownames(Centroides)
+
+Centroides %>% pivot_longer(cols=c('riqueza_saludable','gasto_salud','Edu_Primaria','tuber_emple','poblacion','importancia_gasto_edu'),names_to='Variable',values_to='Valor') %>% 
+  ggplot(aes(x = grupos, y = Valor,fill=grupos)) +
+  geom_col() +
+  facet_wrap(vars(Variable), ncol = 3,nrow = 2) +
+  labs(subtitle = 'Grupos', x = "Variables", y = "Centroide", title = 'Centroides para cada componente en cada grupo') +
+  theme_bw(base_family = 'Cambria') +
+  theme(axis.text.x = element_text(angle = 90), 
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r Grafico de clusters - Metodo de k means, fig.dim=c(4,3), dpi=300}
+# Grafico de clusters
+library(factoextra) # Importacion de librerias.
+# Conversion de nombres de filas a nombres completos de paises.
+
+comb_variables = list() #lista vacia para guardar las combinaciones posibles
+cant_var= length(colnames(PCA_Coordenadas)) #cantidad de variables a combinar
+var_name = colnames(PCA_Coordenadas)
+
+for (var_1 in 1:cant_var-1){
+  for (var_2 in 1:cant_var){
+    if (var_1 <= var_2){ 'do-nothing'
+      } else {
+        
+        comb_variables[[length(comb_variables)+1]]= c(var_name[var_1],var_name[var_2])
+      }
+    }
+}
+
+rm(cant_var,var_name,var_1,var_2)
+# Gráfico con la representación de los grupos en los distintos componentes principales.
+
+for (i in 1:length(comb_variables)){ 
+print(fviz_cluster(
+  PCA.KMeans,
+  data = df_PCA_coord[,comb_variables[[i]]],
+  #palette = Colors,
+  geom = "point",
+  ellipse.type = "convex",
+  ggtheme = theme_bw(base_family = 'Cambria', base_size = 7),
+  main = 'Metodo de K-Means - Grafico de clusters'
+) +
+  theme(plot.title = element_text(hjust = 0.5, size = 10)))
+  }
+```
+
+```{r Backup 5, eval=FALSE, include=FALSE}
+save(Centroides, Data.Grupos, DF, DF_Backup, DF_PCA, DF_Scaled, Paises, PCA_Coordenadas, PCA.KMeans, R, S, Tabla.NClust,
+     VarCodigos, Colors, Dist2, Indicadores, K, file = 'TPF_Backup5.RData') # Guardado de datasets en RData.
+rm(Centroides, Data.Grupos, DF, DF_Backup, DF_PCA, DF_Scaled, Paises, PCA_Coordenadas, PCA.KMeans, R, S, Tabla.NClust,
+     VarCodigos, Colors, Dist2, Indicadores, K)# Eliminacion de variables.
+```
+
+```{r Carga del backup 5, eval=FALSE, include=FALSE}
+load('TPF_Backup5.RData') # Carga de datasets en RData.
+```
+
+```{r Grafico de mapa mundial, fig.dim=c(10,6), results='hide', fig.show='hide'}
+# Mapa geográfico para la representaciòn de clusters
+# Se obtienen datos de las latitudes y longitudes promedio de cada pais y se crea una tabla consolidada con el código de cada pais, el nombre, la latitud y longitud.
+LatLong = read.csv('world_country_and_usa_states_latitude_and_longitude_values.csv')
+LatLong = LatLong[,1:4]
+Consolidado = Data.Grupos
+Consolidado$Pais = rownames(Consolidado)
+Consolidado = merge(x = Consolidado, y = Paises, by.x = 'Pais', by.y = 'value')
+Consolidado = merge(x = Consolidado, y = LatLong, by.x = 'id', by.y = 'country_code', all.x = T)
+Consolidado$Grupo = as.factor(Consolidado$Grupo)
+
+# Se utiliza la libreria "maps" para obtener las coordenadas geográficas para representar el mapa mundial en dos ejes cartesianos.
+# Luego, se representa el mapa y cada uno de los paises, con el color representativo del grupo correspondiente.
+WorldMap = map_data("world")
+ggplot() +
+  geom_polygon(WorldMap, mapping = aes(x = long, y = lat, group = group), colour = "white", fill = 'lightgrey') +
+  geom_point(data = Consolidado, mapping = aes(x = longitude, y = latitude, color = Grupo), size = 5, alpha = 0.5) +
+  scale_color_manual(values = Colors) +
+  labs(x = "Longitud", y = "Latitud", title = 'Representación geográfica del clustering obtenido') +
+  theme_bw(base_family = 'Cambria') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+```{r Backup 4, eval=FALSE, include=FALSE}
+save(DF, DF_Backup, DF_PCA, DF_Scaled, Paises, PCA_Coordenadas, R, S, Tabla.NClust, VarCodigos, Colors, Dist2, Indicadores, K, file = 'TPF_Backup4.RData') # Guardado de datasets en RData.
+rm(DF, DF_Backup, DF_PCA, DF_Scaled, Paises, PCA_Coordenadas, R, S, Tabla.NClust, VarCodigos, Colors, Dist2, Indicadores, K) # Eliminacion de variables.
+```
+
+```{r Carga del backup 4, eval=FALSE, include=FALSE}
+load('TPF_Backup4.RData') # Carga de datasets en RData.
+```
